@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,10 +18,16 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const (
-	clientTimeout = 5 * time.Second
-	sensorsURL    = "http://localhost:9111/sensor-data"
+var Version string
+
+var (
+	showVersion   = flag.Bool("v", false, "Show version and exit")
+	sensorsURL    = flag.String("sensorsURL", "http://localhost:9111/sensor-data", "URL to get sensors data")
+	clientTimeout = flag.Duration("timeout", 5*time.Second, "HTTP Client timeout")
 )
+
+// Authorized Telegram user IDs
+var authorizedUsers map[int64]struct{}
 
 // SensorData struct to hold the sensor information
 type SensorData struct {
@@ -29,13 +36,58 @@ type SensorData struct {
 	Pressure    float64 `json:"pressure"`
 }
 
-// Authorized Telegram user IDs
-var authorizedUsers map[int64]struct{}
+func main() {
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("%s\n", Version)
+		os.Exit(0)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Load bot token from environment
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if botToken == "" {
+		log.Fatal("TELEGRAM_BOT_TOKEN not set")
+	}
+
+	// Load authorized user IDs from environment
+	authorizedUsersStr := os.Getenv("TELEGRAM_AUTHORIZED_USERS")
+	authorizedUsers = make(map[int64]struct{})
+	for idStr := range strings.SplitSeq(authorizedUsersStr, ",") {
+		if len(idStr) == 0 {
+			continue
+		}
+		idStr = strings.TrimSpace(idStr)
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			log.Fatalf("Invalid user ID in TELEGRAM_AUTHORIZED_USERS: %s", idStr)
+		}
+		authorizedUsers[id] = struct{}{}
+	}
+
+	// Create a new bot instance with the bot token
+	opts := []bot.Option{
+		bot.WithDefaultHandler(handleMessage),
+	}
+
+	b, err := bot.New(botToken, opts...)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("App started successfully")
+
+	// Start the bot
+	b.Start(ctx)
+}
 
 // Fetch the sensor data from the local endpoint
 func getSensorData() (*SensorData, error) {
-	client := &http.Client{Timeout: clientTimeout}
-	resp, err := client.Get(sensorsURL)
+	client := &http.Client{Timeout: *clientTimeout}
+	resp, err := client.Get(*sensorsURL)
 	if err != nil {
 		return nil, fmt.Errorf("could not fetch sensor data: %v", err)
 	}
@@ -111,45 +163,4 @@ func handleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
 			Text:   sensorInfo,
 		})
 	}
-}
-
-func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
-	// Load bot token from environment
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if botToken == "" {
-		log.Fatal("TELEGRAM_BOT_TOKEN not set")
-	}
-
-	// Load authorized user IDs from environment
-	authorizedUsersStr := os.Getenv("TELEGRAM_AUTHORIZED_USERS")
-	authorizedUsers = make(map[int64]struct{})
-	for idStr := range strings.SplitSeq(authorizedUsersStr, ",") {
-		if len(idStr) == 0 {
-			continue
-		}
-		idStr = strings.TrimSpace(idStr)
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil {
-			log.Fatalf("Invalid user ID in TELEGRAM_AUTHORIZED_USERS: %s", idStr)
-		}
-		authorizedUsers[id] = struct{}{}
-	}
-
-	// Create a new bot instance with the bot token
-	opts := []bot.Option{
-		bot.WithDefaultHandler(handleMessage),
-	}
-
-	b, err := bot.New(botToken, opts...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("App started successfully")
-
-	// Start the bot
-	b.Start(ctx)
 }

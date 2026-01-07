@@ -1,6 +1,5 @@
 BINARY_NAME=raspiweatherbot
-# Get version from git tag, fallback to "dev" if no tag exists
-VERSION?=$(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+VERSION=$(shell git describe --tags --always --dirty)
 LDFLAGS=-ldflags="-s -w -X main.Version=$(VERSION)"
 
 # Default target - build for current architecture
