@@ -1,16 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 )
 
 const (
@@ -49,16 +53,19 @@ func getSensorData() (*SensorData, error) {
 }
 
 // Create a new reply keyboard with a button
-func createReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
-	return tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🌤️ Get Weather Data"),
-		),
-	)
+func createReplyKeyboard() *models.ReplyKeyboardMarkup {
+	return &models.ReplyKeyboardMarkup{
+		Keyboard: [][]models.KeyboardButton{
+			{
+				{Text: "🌤️ Get Weather Data"},
+			},
+		},
+		ResizeKeyboard: true,
+	}
 }
 
 // Handle the received command
-func handleMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func handleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
@@ -66,15 +73,20 @@ func handleMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	// Check if user is authorized
 	if _, authorized := authorizedUsers[update.Message.From.ID]; !authorized {
 		log.Printf("Unauthorized start attempt by user ID: %d", update.Message.From.ID)
-		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "You are not authorized to use this bot."))
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "You are not authorized to use this bot.",
+		})
 		return
 	}
 
 	// Handle start command
 	if update.Message.Text == "/start" {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Welcome! Use the keyboard below to get weather data.")
-		msg.ReplyMarkup = createReplyKeyboard()
-		bot.Send(msg)
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:      update.Message.Chat.ID,
+			Text:        "Welcome! Use the keyboard below to get weather data.",
+			ReplyMarkup: createReplyKeyboard(),
+		})
 	}
 
 	// Handle keyboard button press
@@ -82,7 +94,10 @@ func handleMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		// Fetch the sensor data from localhost
 		data, err := getSensorData()
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Error fetching sensor data: %v", err)))
+			b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   fmt.Sprintf("Error fetching sensor data: %v", err),
+			})
 			return
 		}
 
@@ -91,11 +106,17 @@ func handleMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			data.Temperature, data.Humidity, data.Pressure*0.75)
 
 		// Send the data to the user
-		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, sensorInfo))
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   sensorInfo,
+		})
 	}
 }
 
 func main() {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	// Load bot token from environment
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if botToken == "" {
@@ -118,23 +139,17 @@ func main() {
 	}
 
 	// Create a new bot instance with the bot token
-	bot, err := tgbotapi.NewBotAPI(botToken)
+	opts := []bot.Option{
+		bot.WithDefaultHandler(handleMessage),
+	}
+
+	b, err := bot.New(botToken, opts...)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Set up the updates channel
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	updates := bot.GetUpdatesChan(u)
-
 	log.Println("App started successfully")
 
-	// Handle updates (messages and button presses)
-	for update := range updates {
-		if update.Message != nil {
-			handleMessage(bot, update)
-		}
-	}
+	// Start the bot
+	b.Start(ctx)
 }
