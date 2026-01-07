@@ -23,7 +23,7 @@ Set env vars:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_AUTHORIZED_USERS` (comma-separated IDs of allowed users)
 
-Unautorized requests are logged with user IDs, so to determine your user id, just send `/start` to bot - your ID will be in the logs of app.
+Unautorized requests are logged with user IDs, so to determine your user id, just send `/start` to bot - your ID will be in the logs of the app.
 
 ## Run
 
