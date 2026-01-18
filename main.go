@@ -16,6 +16,8 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+
+	"github.com/realfatcat/raspiweather/pkg/types"
 )
 
 var Version string
@@ -29,11 +31,9 @@ var (
 // Authorized Telegram user IDs
 var authorizedUsers map[int64]struct{}
 
-// SensorData struct to hold the sensor information
-type SensorData struct {
-	Temperature float64 `json:"temperature"`
-	Humidity    float64 `json:"humidity"`
-	Pressure    float64 `json:"pressure"`
+// sensorsResp struct to hold the sensor information
+type sensorsResp struct {
+	data []types.WeatherData
 }
 
 func main() {
@@ -85,7 +85,7 @@ func main() {
 }
 
 // Fetch the sensor data from the local endpoint
-func getSensorData() (*SensorData, error) {
+func getSensorData() (*sensorsResp, error) {
 	client := &http.Client{Timeout: *clientTimeout}
 	resp, err := client.Get(*sensorsURL)
 	if err != nil {
@@ -97,11 +97,11 @@ func getSensorData() (*SensorData, error) {
 		return nil, fmt.Errorf("bad response status: %s", resp.Status)
 	}
 
-	var data SensorData
+	var data []types.WeatherData
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("could not decode sensor data: %v", err)
 	}
-	return &data, nil
+	return &sensorsResp{data: data}, nil
 }
 
 // Create a new reply keyboard with a button
@@ -109,7 +109,7 @@ func createReplyKeyboard() *models.ReplyKeyboardMarkup {
 	return &models.ReplyKeyboardMarkup{
 		Keyboard: [][]models.KeyboardButton{
 			{
-				{Text: "🌤️ Get Weather Data"},
+				{Text: "🌤️ Get Sensors Data"},
 			},
 		},
 		ResizeKeyboard: true,
@@ -144,7 +144,7 @@ func handleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
 	// Handle keyboard button press
 	if update.Message.Text == "🌤️ Get Weather Data" {
 		// Fetch the sensor data from localhost
-		data, err := getSensorData()
+		sensorsData, err := getSensorData()
 		if err != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
@@ -154,13 +154,23 @@ func handleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
 		}
 
 		// Create the response message
-		sensorInfo := fmt.Sprintf("🌡️ Temperature: %.2f°C\n💧 Humidity: %.2f%%\n🌪️ Pressure: %.2fmmHg",
-			data.Temperature, data.Humidity, data.Pressure*0.75)
+		var resp []string
+		for _, si := range sensorsData.data {
+			resp = append(resp,
+				fmt.Sprintf(
+					"SensorID: [%s]\n🌡️  Temperature: %.2f°C\n  💧 Humidity: %.2f%%\n  🌪️ Pressure: %.2fmmHg",
+					si.SensorID,
+					si.Temperature,
+					si.Humidity,
+					si.Pressure*0.75,
+				),
+			)
+		}
 
 		// Send the data to the user
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   sensorInfo,
+			Text:   strings.Join(resp, "\n"),
 		})
 	}
 }

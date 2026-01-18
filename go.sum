@@ -1,2 +1,4 @@
 github.com/go-telegram/bot v1.17.0 h1:Hs0kGxSj97QFqOQP0zxduY/4tSx8QDzvNI9uVRS+zmY=
 github.com/go-telegram/bot v1.17.0/go.mod h1:i2TRs7fXWIeaceF3z7KzsMt/he0TwkVC680mvdTFYeM=
+github.com/realfatcat/raspiweather v0.3.0 h1:nS3+wILsWYgzouZWYI5aeCA+hQOwFyVHidt9rB4DSpc=
+github.com/realfatcat/raspiweather v0.3.0/go.mod h1:qtFWsbFXte18TmkmQh07i8+Ku9fxG6oxcpLtS2FYu0Q=
