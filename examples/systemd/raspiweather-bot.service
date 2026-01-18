@@ -1,0 +1,18 @@
+[Unit]
+Description=raspiweather service
+After=network.target
+
+[Service]
+
+EnvironmentFile=/etc/default/raspiweather-bot
+User=raspiweather
+Group=raspiweather
+Type=simple
+
+# My current bme280 module have 0x76 i2c address
+ExecStart=/usr/bin/raspiweather-bot
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
